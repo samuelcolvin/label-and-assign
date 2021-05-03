@@ -19,8 +19,8 @@ class Settings(BaseSettings):
 
     @validator('reviewers', pre=True)
     def parse_reviewers(cls, rs: str) -> Tuple[str, ...]:
-        revs = [r.strip(' ') for r in rs.split(',')]
-        return tuple(filter(None, revs))
+        reviewers = [r.strip(' ') for r in rs.split(',')]
+        return tuple(filter(None, reviewers))
 
     class Config:
         fields = {
@@ -58,70 +58,91 @@ class GitHubEvent(BaseModel):
 
 logging.basicConfig(level=logging.INFO)
 
-try:
-    s = Settings()
-except ValidationError as e:
-    logging.error('error loading Settings\n:%s', e)
-    sys.exit(1)
 
-contents = s.github_event_path.read_text()
-event = GitHubEvent.parse_raw(contents)
+class Run:
+    def __init__(self):
+        try:
+            self.settings = Settings()
+        except ValidationError as e:
+            logging.error('error loading Settings\n:%s', e)
+            self.settings = None
+        else:
+            contents = self.settings.github_event_path.read_text()
+            self.event = GitHubEvent.parse_raw(contents)
 
-if event.issue.pull_request is None:
-    logging.info('action only applies to pull requests, not issues')
-    sys.exit(0)
+            if self.event.issue.pull_request is None:
+                logging.info('action only applies to pull requests, not issues')
+                sys.exit(0)
 
-body = event.comment.body.lower()
+            g = Github(self.settings.token.get_secret_value())
+            repo = g.get_repo(self.settings.github_repository)
+            self.pr = repo.get_pull(self.event.issue.number)
+            self.commenter_is_reviewer = self.event.comment.user.login in self.settings.reviewers
+            self.commenter_is_author = self.event.issue.user.login == self.event.comment.user.login
+            self.show_reviewers = ', '.join(f'"{r}"' for r in self.settings.reviewers)
 
-g = Github(s.token.get_secret_value())
-repo = g.get_repo(s.github_repository)
-pr = repo.get_pull(event.issue.number)
-commenter_is_reviewer = event.comment.user.login in s.reviewers
-commenter_is_author = event.issue.user.login == event.comment.user.login
-show_reviewers = ', '.join(f'"{r}"' for r in s.reviewers)
+    def run(self):
+        body = self.event.comment.body.lower()
+        if self.settings.request_update_trigger in body:
+            success, msg = self.assigned_author()
+        elif self.settings.request_review_trigger in body:
+            success, msg = self.request_review()
+        else:
+            success = True
+            msg = (
+                f'neither {self.settings.request_update_trigger!r} nor {self.settings.request_review_trigger!r} '
+                f'found in comment body, not proceeding'
+            )
 
+        if success:
+            logging.info('success: %s', msg)
+        else:
+            logging.warning('warning: %s', msg)
 
-def remove_label(label: str):
-    labels = pr.get_labels()
-    if any(lb.name == label for lb in labels):
-        pr.remove_from_labels(label)
-
-
-def assigned_author() -> Tuple[bool, str]:
-    if not commenter_is_reviewer:
-        return False, f'Only reviewers {show_reviewers} can assign the author, not {event.comment.user.login}'
-    pr.add_to_labels(s.awaiting_update_label)
-    remove_label(s.awaiting_review_label)
-    pr.add_to_assignees(event.issue.user.login)
-    to_remove = [r for r in s.reviewers if r != event.issue.user.login]
-    if to_remove:
-        pr.remove_from_assignees(*to_remove)
-    return True, f'Author {event.issue.user.login} successfully assigned to PR, "{s.awaiting_update_label}" label added'
-
-
-def request_review() -> Tuple[bool, str]:
-    if not (commenter_is_reviewer or commenter_is_author):
-        return False, (
-            f'Only the PR author {event.issue.user.login} or reviewers can request a review, '
-            f'not {event.comment.user.login}'
+    def assigned_author(self) -> Tuple[bool, str]:
+        if not self.commenter_is_reviewer:
+            return (
+                False,
+                f'Only reviewers {self.show_reviewers} can assign the author, not {self.event.comment.user.login}',
+            )
+        self.pr.add_to_labels(self.settings.awaiting_update_label)
+        self.remove_label(self.settings.awaiting_review_label)
+        self.pr.add_to_assignees(self.event.issue.user.login)
+        to_remove = [r for r in self.settings.reviewers if r != self.event.issue.user.login]
+        if to_remove:
+            self.pr.remove_from_assignees(*to_remove)
+        return (
+            True,
+            f'Author {self.event.issue.user.login} successfully assigned to PR, '
+            f'"{self.settings.awaiting_update_label}" label added',
         )
-    pr.add_to_labels(s.awaiting_review_label)
-    remove_label(s.awaiting_update_label)
-    pr.add_to_assignees(*s.reviewers)
-    if event.issue.user.login not in s.reviewers:
-        pr.remove_from_assignees(event.issue.user.login)
-    return True, f'Reviewers {show_reviewers} successfully assigned to PR, "{s.awaiting_review_label}" label added'
+
+    def request_review(self) -> Tuple[bool, str]:
+        if not (self.commenter_is_reviewer or self.commenter_is_author):
+            return False, (
+                f'Only the PR author {self.event.issue.user.login} or reviewers can request a review, '
+                f'not {self.event.comment.user.login}'
+            )
+        self.pr.add_to_labels(self.settings.awaiting_review_label)
+        self.remove_label(self.settings.awaiting_update_label)
+        self.pr.add_to_assignees(*self.settings.reviewers)
+        if self.event.issue.user.login not in self.settings.reviewers:
+            self.pr.remove_from_assignees(self.event.issue.user.login)
+        return (
+            True,
+            f'Reviewers {self.show_reviewers} successfully assigned to PR, '
+            f'"{self.settings.awaiting_review_label}" label added',
+        )
+
+    def remove_label(self, label: str):
+        labels = self.pr.get_labels()
+        if any(lb.name == label for lb in labels):
+            self.pr.remove_from_labels(label)
 
 
-if s.request_update_trigger in body:
-    success, msg = assigned_author()
-elif s.request_review_trigger in body:
-    success, msg = request_review()
-else:
-    success = True
-    msg = f'neither {s.request_update_trigger!r} nor {s.request_review_trigger!r} found in comment body, not proceeding'
-
-if success:
-    logging.info('success: %s', msg)
-else:
-    logging.warning('warning: %s', msg)
+if __name__ == '__main__':
+    r = Run()
+    if r.settings is None:
+        sys.exit(1)
+    else:
+        r.run()
