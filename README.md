@@ -24,7 +24,7 @@ jobs:
   label-and-assign:
     runs-on: ubuntu-latest
     steps:
-      - uses: samuelcolvin/label-and-assign@master
+      - uses: samuelcolvin/label-and-assign@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           reviewers: first_reviewer, second_reviewer

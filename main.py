@@ -4,13 +4,13 @@ import sys
 from typing import Optional, Tuple
 
 from github import Github
-from pydantic import BaseModel, BaseSettings, Field, FilePath, SecretStr, ValidationError, validator
+from pydantic import BaseModel, BaseSettings, FilePath, SecretStr, ValidationError, validator
 
 
 class Settings(BaseSettings):
     github_repository: str
     github_event_path: FilePath
-    token: SecretStr = Field(..., alias='input_token')
+    token: SecretStr
     reviewers: Tuple[str, ...]
     request_update_trigger: str
     request_review_trigger: str
@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     class Config:
         fields = {
+            'token': {'env': 'input_token'},
             'reviewers': {'env': ['input_reviewers']},
             'request_update_trigger': {'env': ['input_request_update_trigger']},
             'request_review_trigger': {'env': ['input_request_review_trigger']},
