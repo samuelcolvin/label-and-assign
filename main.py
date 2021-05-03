@@ -48,7 +48,7 @@ class Issue(BaseModel):
 
 
 class PullRequest(BaseModel):
-    number: str
+    number: int
     user: User
 
 
@@ -87,12 +87,14 @@ class Run:
                 number = event.issue.number
                 self.author = event.issue.user.login
                 self.body = event.comment.body.lower()
+                self.type = 'comment'
             else:
                 event = cast(PullRequestEvent, event)
                 self.commenter = event.review.user.login
                 number = event.pull_request.number
                 self.author = event.pull_request.user.login
                 self.body = event.review.body.lower()
+                self.type = 'review'
 
             # hack until https://github.com/samuelcolvin/pydantic/issues/1458 gets fixed
             self.reviewers = [r.strip(' ') for r in self.settings.reviewers.split(',') if r.strip(' ')]
@@ -104,7 +106,7 @@ class Run:
             self.commenter_is_author = self.author == self.commenter
 
     def run(self):
-        logging.info('%s: %r', self.commenter, self.body)
+        logging.info('%s (%s): %r', self.commenter, self.type, self.body)
         if self.settings.request_update_trigger in self.body:
             success, msg = self.assigned_author()
         elif self.settings.request_review_trigger in self.body:
