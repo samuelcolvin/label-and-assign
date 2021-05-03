@@ -1,8 +1,8 @@
 # Label & Assign
 
-Switch labels and assignees on pull requests using comments. This is useful to manage the review process
-when pull request authors are not approved contributors.
+Switch labels and assignees on pull requests using comments.
 
+This is useful to manage the review process when pull request authors are not approved contributors.
 
 ## Usage
 
@@ -21,7 +21,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  latest-changes:
+  label-and-assign:
     runs-on: ubuntu-latest
     steps:
       - uses: samuelcolvin/label-and-assign@master

@@ -1,8 +1,6 @@
 name: Label & Assign
 author: Samuel Colvin <s@muelcolvin.com>
-description: >
-  Switch labels and assignees on pull requests using comments. This is useful to manage the review process
-  when pull request authors are not approved contributors.
+description: Switch labels and assignees on pull requests using comments.
 
 inputs:
   token:
