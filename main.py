@@ -12,10 +12,10 @@ class Settings(BaseSettings):
     github_event_path: FilePath
     token: SecretStr
     reviewers: str
-    request_update_trigger: str
-    request_review_trigger: str
-    awaiting_update_label: str
-    awaiting_review_label: str
+    request_update_trigger: str = 'please update'
+    request_review_trigger: str = 'please review'
+    awaiting_update_label: str = 'awaiting author updates'
+    awaiting_review_label: str = 'awaiting review'
 
     class Config:
         fields = {
