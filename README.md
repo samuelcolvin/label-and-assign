@@ -15,7 +15,7 @@ name: Label & Assign
 
 on:
   issue_comment:
-    types: [created]
+    types: [created, edited]
 
 permissions:
   pull-requests: write
