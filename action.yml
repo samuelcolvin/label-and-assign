@@ -1,0 +1,42 @@
+name: Label & Assign
+author: Samuel Colvin <s@muelcolvin.com>
+description: >
+  Switch labels and assignees on pull requests using comments. This is useful to manage the review process
+  when pull request authors are not approved contributors.
+
+inputs:
+  token:
+    description: Github token for the repo, use {{ secrets.GITHUB_TOKEN }}
+    required: true
+
+  reviewers:
+    description: Comma separated list of Github usernames for pull request reviewers
+    required: true
+  request_update_trigger:
+    description: |
+      Text to search for in comments by reviewers to trigger a request for
+      changes from the PR author (case-insensitive)
+    required: false
+    default: please update
+  request_review_trigger:
+    description: |
+      Text to search for in comments by the PR author to trigger a request for reviews from
+      the Reviewers (case-insensitive)
+    required: false
+    default: please review
+  awaiting_update_label:
+    description: Label to apply when an update is requested
+    required: false
+    default: awaiting author updates
+  awaiting_review_label:
+    description: Label to apply when a review is requested
+    required: false
+    default: awaiting review
+
+runs:
+  using: docker
+  image: Dockerfile
+
+branding:
+  icon: arrow-right-circle
+  color: orange
