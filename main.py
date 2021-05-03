@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import logging
 import sys
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union, cast
 
 from github import Github
 from pydantic import BaseModel, BaseSettings, FilePath, SecretStr, ValidationError
@@ -37,19 +37,33 @@ class Comment(BaseModel):
     user: User
 
 
-class PullRequest(BaseModel):
+class IssuePullRequest(BaseModel):
     url: str
 
 
 class Issue(BaseModel):
-    pull_request: Optional[PullRequest] = None
+    pull_request: Optional[IssuePullRequest] = None
     user: User
     number: int
 
 
-class GitHubEvent(BaseModel):
+class PullRequest(BaseModel):
+    number: str
+    user: User
+
+
+class IssueEvent(BaseModel):
     comment: Comment
     issue: Issue
+
+
+class PullRequestEvent(BaseModel):
+    review: Comment
+    pull_request: PullRequest
+
+
+class GitHubEvent(BaseModel):
+    __root__: Union[IssueEvent, PullRequestEvent]
 
 
 logging.basicConfig(level=logging.INFO)
@@ -64,27 +78,39 @@ class Run:
             self.settings = None
         else:
             contents = self.settings.github_event_path.read_text()
-            self.event = GitHubEvent.parse_raw(contents)
+            event = GitHubEvent.parse_raw(contents)
 
-            if self.event.issue.pull_request is None:
-                logging.info('action only applies to pull requests, not issues')
-                self.settings = None
-                return
+            if issue := getattr(event, 'issue'):
+                event = cast(IssueEvent, event)
+                if issue.pull_request is None:
+                    logging.info('action only applies to pull requests, not issues')
+                    self.settings = None
+                    return
+
+                self.commenter = event.comment.user.login
+                number = event.issue.number
+                self.author = event.issue.user.login
+                self.body = event.comment.body.lower()
+            else:
+                event = cast(PullRequestEvent, event)
+                self.commenter = event.review.user.login
+                number = event.pull_request.number
+                self.author = event.pull_request.user.login
+                self.body = event.review.body.lower()
 
             # hack until https://github.com/samuelcolvin/pydantic/issues/1458 gets fixed
             self.reviewers = [r.strip(' ') for r in self.settings.reviewers.split(',') if r.strip(' ')]
 
             g = Github(self.settings.token.get_secret_value())
             repo = g.get_repo(self.settings.github_repository)
-            self.pr = repo.get_pull(self.event.issue.number)
-            self.commenter_is_reviewer = self.event.comment.user.login in self.reviewers
-            self.commenter_is_author = self.event.issue.user.login == self.event.comment.user.login
+            self.pr = repo.get_pull(number)
+            self.commenter_is_reviewer = self.commenter in self.reviewers
+            self.commenter_is_author = self.author == self.commenter
 
     def run(self):
-        body = self.event.comment.body.lower()
-        if self.settings.request_update_trigger in body:
+        if self.settings.request_update_trigger in self.body:
             success, msg = self.assigned_author()
-        elif self.settings.request_review_trigger in body:
+        elif self.settings.request_review_trigger in self.body:
             success, msg = self.request_review()
         else:
             success = True
@@ -102,31 +128,30 @@ class Run:
         if not self.commenter_is_reviewer:
             return (
                 False,
-                f'Only reviewers {self.show_reviewers()} can assign the author, not {self.event.comment.user.login}',
+                f'Only reviewers {self.show_reviewers()} can assign the author, not {self.commenter}',
             )
         self.pr.add_to_labels(self.settings.awaiting_update_label)
         self.remove_label(self.settings.awaiting_review_label)
-        self.pr.add_to_assignees(self.event.issue.user.login)
-        to_remove = [r for r in self.reviewers if r != self.event.issue.user.login]
+        self.pr.add_to_assignees(self.author)
+        to_remove = [r for r in self.reviewers if r != self.author]
         if to_remove:
             self.pr.remove_from_assignees(*to_remove)
         return (
             True,
-            f'Author {self.event.issue.user.login} successfully assigned to PR, '
+            f'Author {self.author} successfully assigned to PR, '
             f'"{self.settings.awaiting_update_label}" label added',
         )
 
     def request_review(self) -> Tuple[bool, str]:
         if not (self.commenter_is_reviewer or self.commenter_is_author):
             return False, (
-                f'Only the PR author {self.event.issue.user.login} or reviewers can request a review, '
-                f'not {self.event.comment.user.login}'
+                f'Only the PR author {self.author} or reviewers can request a review, not {self.commenter}'
             )
         self.pr.add_to_labels(self.settings.awaiting_review_label)
         self.remove_label(self.settings.awaiting_update_label)
         self.pr.add_to_assignees(*self.reviewers)
-        if self.event.issue.user.login not in self.reviewers:
-            self.pr.remove_from_assignees(self.event.issue.user.login)
+        if self.author not in self.reviewers:
+            self.pr.remove_from_assignees(self.author)
         return (
             True,
             f'Reviewers {self.show_reviewers()} successfully assigned to PR, '
