@@ -23,11 +23,11 @@ inputs:
     required: false
     default: please review
   awaiting_update_label:
-    description: Label to apply when an update is requested
+    description: Label to apply when an update is requested, this label needs to exist of the action will fail
     required: false
     default: awaiting author updates
   awaiting_review_label:
-    description: Label to apply when a review is requested
+    description: Label to apply when a review is requested, this label needs to exist of the action will fail
     required: false
     default: awaiting review
 
