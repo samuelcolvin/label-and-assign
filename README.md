@@ -17,6 +17,9 @@ on:
   issue_comment:
     types: [created]
 
+permissions:
+  pull-requests: write
+
 jobs:
   latest-changes:
     runs-on: ubuntu-latest
@@ -29,12 +32,12 @@ jobs:
 
 ### Inputs
 
-* **`token`**: Github token for the repo, use ``{{ secrets.GITHUB_TOKEN }}` (**required**)
+* **`token`**: Github token for the repo, use `{{ secrets.GITHUB_TOKEN }}` (**required**)
 * **`reviewers`**: Comma separated list of Github usernames for pull request reviewers (**required**)
 * **`request_update_trigger`**: Text to search for in comments by reviewers to trigger a request for
-  changes from the PR author (case-insensitive) (default: **`please update`**)
+  changes from the PR author (case-insensitive) (default: `please update`)
 * **`request_review_trigger`**: Text to search for in comments by the PR author to trigger a request for reviews from
-  the Reviewers (case-insensitive) (default: **`please review`**)
-* **`awaiting_update_label`**: Label to apply when an update is requested (default: **`awaiting author updates`**)
+  the Reviewers (case-insensitive) (default: `please review`)
+* **`awaiting_update_label`**: Label to apply when an update is requested (default: `awaiting author updates`)
 * **`awaiting_review_label`**: Label to apply when a review is requested
-    required: false (default: **`awaiting review`**)
+    required: false (default: `awaiting review`)
