@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
+import json
 import logging
+import os
 import sys
 from typing import Optional, Tuple
 
 from github import Github
-from pydantic import BaseModel, BaseSettings, FilePath, SecretStr, ValidationError, validator
+from pydantic import BaseModel, BaseSettings, FilePath, SecretStr, ValidationError
 
 
 class Settings(BaseSettings):
@@ -16,11 +18,6 @@ class Settings(BaseSettings):
     request_review_trigger: str
     awaiting_update_label: str
     awaiting_review_label: str
-
-    @validator('reviewers', pre=True)
-    def parse_reviewers(cls, rs: str) -> Tuple[str, ...]:
-        reviewers = [r.strip(' ') for r in rs.split(',')]
-        return tuple(filter(None, reviewers))
 
     class Config:
         fields = {
@@ -62,6 +59,10 @@ logging.basicConfig(level=logging.INFO)
 
 class Run:
     def __init__(self):
+        # hack until https://github.com/samuelcolvin/pydantic/issues/1458 gets fixed
+        if input_reviews := os.getenv('input_reviewers'):
+            os.environ['input_reviewers'] = json.dumps([r.strip(' ') for r in input_reviews.split(',') if r.strip(' ')])
+
         try:
             self.settings = Settings()
         except ValidationError as e:
