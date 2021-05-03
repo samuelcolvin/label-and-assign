@@ -47,18 +47,24 @@ class Issue(BaseModel):
     number: int
 
 
-class PullRequest(BaseModel):
-    number: int
-    user: User
-
-
 class IssueEvent(BaseModel):
     comment: Comment
     issue: Issue
 
 
+class Review(BaseModel):
+    body: str
+    user: User
+    state: str
+
+
+class PullRequest(BaseModel):
+    number: int
+    user: User
+
+
 class PullRequestEvent(BaseModel):
-    review: Comment
+    review: Review
     pull_request: PullRequest
 
 
@@ -75,6 +81,7 @@ class Run:
         else:
             contents = self.settings.github_event_path.read_text()
             event = parse_raw_as(Union[IssueEvent, PullRequestEvent], contents)
+            self.force_assign_author = False
 
             if issue := getattr(event, 'issue', None):
                 event = cast(IssueEvent, event)
@@ -94,6 +101,7 @@ class Run:
                 number = event.pull_request.number
                 self.author = event.pull_request.user.login
                 self.body = event.review.body.lower()
+                self.force_assign_author = event.review.state == 'changes_requested'
                 self.type = 'review'
 
             # hack until https://github.com/samuelcolvin/pydantic/issues/1458 gets fixed
@@ -107,10 +115,10 @@ class Run:
 
     def run(self):
         logging.info('%s (%s): %r', self.commenter, self.type, self.body)
-        if self.settings.request_update_trigger in self.body:
-            success, msg = self.assigned_author()
-        elif self.settings.request_review_trigger in self.body:
+        if self.settings.request_review_trigger in self.body:
             success, msg = self.request_review()
+        elif self.settings.request_update_trigger in self.body or self.force_assign_author:
+            success, msg = self.assign_author()
         else:
             success = True
             msg = (
@@ -123,7 +131,7 @@ class Run:
         else:
             logging.warning('warning: %s', msg)
 
-    def assigned_author(self) -> Tuple[bool, str]:
+    def assign_author(self) -> Tuple[bool, str]:
         if not self.commenter_is_reviewer:
             return (
                 False,
