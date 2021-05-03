@@ -4,7 +4,7 @@ import sys
 from typing import Optional, Tuple, Union, cast
 
 from github import Github
-from pydantic import BaseModel, BaseSettings, FilePath, SecretStr, ValidationError
+from pydantic import BaseModel, BaseSettings, FilePath, SecretStr, ValidationError, parse_raw_as
 
 
 class Settings(BaseSettings):
@@ -62,10 +62,6 @@ class PullRequestEvent(BaseModel):
     pull_request: PullRequest
 
 
-class GitHubEvent(BaseModel):
-    __root__: Union[IssueEvent, PullRequestEvent]
-
-
 logging.basicConfig(level=logging.INFO)
 
 
@@ -78,9 +74,9 @@ class Run:
             self.settings = None
         else:
             contents = self.settings.github_event_path.read_text()
-            event = GitHubEvent.parse_raw(contents)
+            event = parse_raw_as(Union[IssueEvent, PullRequestEvent], contents)
 
-            if issue := getattr(event, 'issue'):
+            if issue := getattr(event, 'issue', None):
                 event = cast(IssueEvent, event)
                 if issue.pull_request is None:
                     logging.info('action only applies to pull requests, not issues')
@@ -108,6 +104,7 @@ class Run:
             self.commenter_is_author = self.author == self.commenter
 
     def run(self):
+        logging.info('%s: %r', self.commenter, self.body)
         if self.settings.request_update_trigger in self.body:
             success, msg = self.assigned_author()
         elif self.settings.request_review_trigger in self.body:
