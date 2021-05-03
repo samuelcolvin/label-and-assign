@@ -73,51 +73,51 @@ logging.basicConfig(level=logging.INFO)
 
 class Run:
     def __init__(self):
+        self.exit = 0
         try:
             self.settings = Settings()
         except ValidationError as e:
             logging.error('error loading Settings\n:%s', e)
-            self.settings = None
+            self.exit = 1
+            return
+
+        contents = self.settings.github_event_path.read_text()
+        event = parse_raw_as(Union[IssueEvent, PullRequestEvent], contents)
+        force_assign_author = False
+
+        if hasattr(event, 'issue'):
+            event = cast(IssueEvent, event)
+            if event.issue.pull_request is None:
+                logging.info('action only applies to pull requests, not issues')
+                return
+
+            self.commenter = event.comment.user.login
+            number = event.issue.number
+            self.author = event.issue.user.login
+            body = event.comment.body.lower()
+            event_type = 'comment'
         else:
-            contents = self.settings.github_event_path.read_text()
-            event = parse_raw_as(Union[IssueEvent, PullRequestEvent], contents)
-            self.force_assign_author = False
+            event = cast(PullRequestEvent, event)
+            self.commenter = event.review.user.login
+            number = event.pull_request.number
+            self.author = event.pull_request.user.login
+            body = event.review.body.lower()
+            force_assign_author = event.review.state == 'changes_requested'
+            event_type = 'review'
 
-            if issue := getattr(event, 'issue', None):
-                event = cast(IssueEvent, event)
-                if issue.pull_request is None:
-                    logging.info('action only applies to pull requests, not issues')
-                    self.settings = None
-                    return
+        # hack until https://github.com/samuelcolvin/pydantic/issues/1458 gets fixed
+        self.reviewers = [r.strip(' ') for r in self.settings.reviewers.split(',') if r.strip(' ')]
 
-                self.commenter = event.comment.user.login
-                number = event.issue.number
-                self.author = event.issue.user.login
-                self.body = event.comment.body.lower()
-                self.type = 'comment'
-            else:
-                event = cast(PullRequestEvent, event)
-                self.commenter = event.review.user.login
-                number = event.pull_request.number
-                self.author = event.pull_request.user.login
-                self.body = event.review.body.lower()
-                self.force_assign_author = event.review.state == 'changes_requested'
-                self.type = 'review'
+        g = Github(self.settings.token.get_secret_value())
+        repo = g.get_repo(self.settings.github_repository)
+        self.pr = repo.get_pull(number)
+        self.commenter_is_reviewer = self.commenter in self.reviewers
+        self.commenter_is_author = self.author == self.commenter
 
-            # hack until https://github.com/samuelcolvin/pydantic/issues/1458 gets fixed
-            self.reviewers = [r.strip(' ') for r in self.settings.reviewers.split(',') if r.strip(' ')]
-
-            g = Github(self.settings.token.get_secret_value())
-            repo = g.get_repo(self.settings.github_repository)
-            self.pr = repo.get_pull(number)
-            self.commenter_is_reviewer = self.commenter in self.reviewers
-            self.commenter_is_author = self.author == self.commenter
-
-    def run(self):
-        logging.info('%s (%s): %r', self.commenter, self.type, self.body)
-        if self.settings.request_review_trigger in self.body:
+        logging.info('%s (%s): %r', self.commenter, event_type, body)
+        if self.settings.request_review_trigger in body:
             success, msg = self.request_review()
-        elif self.settings.request_update_trigger in self.body or self.force_assign_author:
+        elif self.settings.request_update_trigger in body or force_assign_author:
             success, msg = self.assign_author()
         else:
             success = True
@@ -176,7 +176,4 @@ class Run:
 
 if __name__ == '__main__':
     run = Run()
-    if run.settings is None:
-        sys.exit(1)
-    else:
-        run.run()
+    sys.exit(run.exit)
