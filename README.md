@@ -8,9 +8,9 @@ This is useful to manage the review process when pull request authors are not ap
 
 Install this GitHub action by creating a file in your repo at `.github/workflows/label-assign.yml`.
 
-A minimal example could be:
+A minimal example:
 
-```YAML
+```yaml
 name: Label & Assign
 
 on:
@@ -24,11 +24,20 @@ jobs:
   label-and-assign:
     runs-on: ubuntu-latest
     steps:
-      - uses: docker://samuelcolvin/label-and-assign:v1
+      - uses: docker://samuelcolvin/label-and-assign:latest
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           reviewers: first_reviewer, second_reviewer
 ```
+
+### Performance
+
+This action is available from the GitHub actions marketplace under the name 
+[`samuelcolvin/label-and-assign`](https://github.com/marketplace/actions/label-assign) however because its container 
+based and GitHub actions can't cache container builds of actions, it's much faster to use via a pre-built image
+from Docker Hub [`samuelcolvin/label-and-assign`](https://hub.docker.com/r/samuelcolvin/label-and-assign).
+
+Use of the pre-built image is shown in the image above.
 
 ### Inputs
 
