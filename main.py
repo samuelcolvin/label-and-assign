@@ -35,6 +35,7 @@ class User(BaseModel):
 class Comment(BaseModel):
     body: str
     user: User
+    id: int
 
 
 class IssuePullRequest(BaseModel):
@@ -91,20 +92,20 @@ class Run:
                 logging.info('action only applies to pull requests, not issues')
                 return
 
-            self.commenter = event.comment.user.login
-            number = event.issue.number
-            self.author = event.issue.user.login
-            body = event.comment.body.lower()
+            comment = event.comment
+            pr = event.issue
             event_type = 'comment'
         else:
             event = cast(PullRequestEvent, event)
-            self.commenter = event.review.user.login
-            number = event.pull_request.number
-            self.author = event.pull_request.user.login
-            body = event.review.body.lower()
+            comment = event.review
+            pr = event.pull_request
             force_assign_author = event.review.state == 'changes_requested'
             event_type = 'review'
 
+        self.commenter = comment.user.login
+        body = comment.body.lower()
+        number = pr.number
+        self.author = pr.user.login
         # hack until https://github.com/samuelcolvin/pydantic/issues/1458 gets fixed
         self.reviewers = [r.strip(' ') for r in self.settings.reviewers.split(',') if r.strip(' ')]
 
@@ -127,6 +128,8 @@ class Run:
             )
 
         if success:
+            if event_type == 'comment':
+                self.pr.get_comment(comment.id).create_reaction('+1')
             logging.info('success: %s', msg)
         else:
             logging.warning('warning: %s', msg)
