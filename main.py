@@ -129,7 +129,7 @@ class Run:
 
         if success:
             if event_type == 'comment':
-                self.pr.get_comment(comment.id).create_reaction('+1')
+                self.pr.get_issue_comment(comment.id).create_reaction('+1')
             logging.info('success: %s', msg)
         else:
             logging.warning('warning: %s', msg)
