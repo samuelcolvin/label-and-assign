@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import logging
 import sys
 from typing import Optional, Tuple, Union, cast
 
@@ -69,7 +68,8 @@ class PullRequestEvent(BaseModel):
     pull_request: PullRequest
 
 
-logging.basicConfig(level=logging.INFO)
+def log(msg: str) -> None:
+    print(msg, flush=True)
 
 
 class Run:
@@ -78,7 +78,7 @@ class Run:
         try:
             self.settings = Settings()
         except ValidationError as e:
-            logging.error('error loading Settings\n:%s', e)
+            log(f'error loading Settings:\n{e}')
             self.exit = 1
             return
 
@@ -89,7 +89,7 @@ class Run:
         if hasattr(event, 'issue'):
             event = cast(IssueEvent, event)
             if event.issue.pull_request is None:
-                logging.info('action only applies to pull requests, not issues')
+                log('action only applies to pull requests, not issues')
                 return
 
             comment = event.comment
@@ -115,13 +115,13 @@ class Run:
         self.commenter_is_reviewer = self.commenter in self.reviewers
         self.commenter_is_author = self.author == self.commenter
 
-        logging.info('%s (%s): %r', self.commenter, event_type, body)
+        log(f'{self.commenter} ({event_type}): {body!r}')
         if self.settings.request_review_trigger in body:
             success, msg = self.request_review()
         elif self.settings.request_update_trigger in body or force_assign_author:
             success, msg = self.assign_author()
         else:
-            success = True
+            success = False
             msg = (
                 f'neither {self.settings.request_update_trigger!r} nor {self.settings.request_review_trigger!r} '
                 f'found in comment body, not proceeding'
@@ -130,9 +130,9 @@ class Run:
         if success:
             if event_type == 'comment':
                 self.pr.get_issue_comment(comment.id).create_reaction('+1')
-            logging.info('success: %s', msg)
+            log(f'success: {msg}')
         else:
-            logging.warning('warning: %s', msg)
+            log(f'warning: {msg}')
 
     def assign_author(self) -> Tuple[bool, str]:
         if not self.commenter_is_reviewer:
