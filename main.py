@@ -53,7 +53,7 @@ class IssueEvent(BaseModel):
 
 
 class Review(BaseModel):
-    body: str
+    body: Optional[str]
     user: User
     state: str
 
@@ -98,6 +98,9 @@ class Run:
         else:
             event = cast(PullRequestEvent, event)
             comment = event.review
+            if comment.body is None:
+                log('review has no body, stopping')
+                return
             pr = event.pull_request
             force_assign_author = event.review.state == 'changes_requested'
             event_type = 'review'
