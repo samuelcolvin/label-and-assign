@@ -1,3 +1,7 @@
+### No longer maintained, replaced by https://github.com/pydantic/hooky
+
+---
+
 # Label & Assign
 
 Switch labels and assignees on pull requests using comments.
